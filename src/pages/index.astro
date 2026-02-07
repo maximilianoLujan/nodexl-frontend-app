@@ -1,0 +1,10 @@
+---
+import MemoryGraph from "../components/react/MemoryGraph";
+import Header from "../components/react/Header"
+import Layout from "../layouts/Layout.astro";
+---
+
+<Layout class="app-container">
+	<Header client:only="react"/>
+	<MemoryGraph client:only="react" />
+</Layout>

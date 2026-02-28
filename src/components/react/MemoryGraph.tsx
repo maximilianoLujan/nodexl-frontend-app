@@ -1,50 +1,29 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import ForceGraph3D from "react-force-graph-3d";
-import getGraph from "../../services/graphService";
-
-const mapGraphData = (apiData: any) => {
-  return {
-    nodes: apiData.vertices.map((v: any) => ({
-      id: v.id,
-      label: v.label,
-      type: v.type,
-      group:
-        v.type === "person"
-          ? 1
-          : v.type === "publication"
-            ? 2
-            : 3,
-    })),
-    links: apiData.edges.map((e: any) => ({
-      source: e.source,
-      target: e.target,
-    })),
-  };
-};
-
+import { useGraphStore } from "../../store/graphStore";
 
 export default function MemoryGraph() {
-  const [graphData, setGraphData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { graphData, loading, error, fetchGraph } = useGraphStore();
 
   useEffect(() => {
-    const loadGraph = async () => {
-      try {
-        const data = await getGraph();
-        setGraphData(mapGraphData(data));
-      } catch {
-        setError("No se pudo cargar el grafo");
-      } finally {
-        setLoading(false);
-      }
-    };
+    // Solo cargamos si no hay datos ya presentes para evitar refetch innecesarios
+    if (!graphData) {
+      fetchGraph();
+    }
+  }, [fetchGraph, graphData]);
 
-    loadGraph();
-  }, []);
-
-  if (loading) return <p>Cargando grafo...</p>;
-  if (error) return <p>{error}</p>;
+  if (loading) return (
+    <div className="flex items-center justify-center h-150 text-slate-400">
+      <p>Cargando grafo...</p>
+    </div>
+  );
+  
+  if (error) return (
+    <div className="flex items-center justify-center h-150 text-red-400">
+      <p>{error}</p>
+    </div>
+  );
+  
   if (!graphData) return null;
 
   return (
@@ -60,7 +39,6 @@ export default function MemoryGraph() {
               : `🗂 Categoría: ${node.label}`
         }
       />
-
     </div>
   );
 }

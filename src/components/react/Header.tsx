@@ -1,14 +1,40 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { MdMemory } from "react-icons/md";
 import { FiUpload, FiX, FiLoader, FiCheckCircle, FiAlertCircle } from "react-icons/fi";
 import importMemories from "../../services/importerService";
 import { useGraphStore } from "../../store/graphStore";
+import getMemories from "../../services/memoriesService";
+import type { Memory } from "../../types/MemoryTypes";
 
 export default function Header() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedFile, setSelectedFiles] = useState<File | null>(null);
   const [uploadStatus, setUploadStatus] = useState<"idle" | "uploading" | "success" | "error">("idle");
-  const fetchGraph = useGraphStore((state) => state.fetchGraph);
+  const {fetchGraph, clearGraph,fetchGraphByMemory} = useGraphStore((state) => state);
+  const [memories, setMemories] = useState<Memory[]>([]);
+  const [loadingMemories, setLoadingMemories] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const [selected, setSelected] = useState<number[]>([]);
+
+  const toggleSelection = (id: number) => {
+    setSelected((prev) =>
+      prev.includes(id)
+        ? prev.filter((item) => item !== id)
+        : [...prev, id]
+    );
+  };
+
+  const fetchMemories = async () => {
+    try {
+      setLoadingMemories(true);
+      const data = await getMemories();
+      setMemories(data);
+    } catch (error) {
+      console.error("Error cargando memorias:", error);
+    } finally {
+      setLoadingMemories(false);
+    }
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -32,6 +58,7 @@ export default function Header() {
       
       // Refrescamos el grafo globalmente
       fetchGraph();
+      fetchMemories()
 
       setTimeout(() => {
         setIsModalOpen(false);
@@ -50,6 +77,29 @@ export default function Header() {
     setSelectedFiles(null);
     setUploadStatus("idle");
   };
+
+  useEffect(() => {
+    fetchMemories()
+  }, []);
+
+  useEffect(() => {
+    const loadSelectedMemories = async () => {
+      if (selected.length === 0) {
+        // Si no hay filtros, cargamos todo
+        await fetchGraph();
+        return;
+      }
+
+      // Si hay filtros, limpiamos y cargamos solo esas memorias
+      clearGraph();
+
+      for (const id of selected) {
+        await fetchGraphByMemory(id);
+      }
+    };
+
+    loadSelectedMemories();
+  }, [selected]);
 
   return (
     <>
@@ -104,9 +154,37 @@ export default function Header() {
           md:flex-row
           md:justify-center
         ">
-          <select className="bg-slate-800 text-slate-200 text-sm px-4 py-2 rounded-lg border border-slate-700 focus:outline-none">
-            <option>Todas las memorias</option>
-          </select>
+          <div className="relative w-64">
+            <button
+              onClick={() => setIsOpen(!isOpen)}
+              className="w-full bg-slate-800 text-slate-200 text-sm px-4 py-2 rounded-lg border border-slate-700 text-left"
+            >
+              {selected.length === 0
+                ? "Todas las memorias"
+                : `${selected.length} seleccionadas`}
+            </button>
+
+            {isOpen && (
+              <div className="absolute mt-2 w-full bg-slate-900 border border-slate-700 rounded-lg shadow-lg max-h-60 overflow-y-auto z-50">
+                {memories.map((memory) => (
+                  <label
+                    key={memory.id}
+                    className="flex items-center gap-3 px-4 py-2 hover:bg-slate-800 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(memory.id)}
+                      onChange={() => toggleSelection(memory.id)}
+                      className="accent-teal-500"
+                    />
+                    <span className="text-slate-200 text-sm">
+                      {memory.filename}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
 
           <select className="bg-slate-800 text-slate-200 text-sm px-4 py-2 rounded-lg border border-slate-700 focus:outline-none">
             <option>Todos los autores</option>

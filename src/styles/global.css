@@ -1,1 +1,38 @@
 @import "tailwindcss";
+
+/* src/styles/global.css */
+
+body {
+  margin: 0;
+  overflow-x: hidden;
+}
+
+.app-container {
+  height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+
+.main {
+  display: grid;
+  grid-template-columns: 330px 1fr;
+  height: calc(100vh - 68.79px);
+  overflow: hidden;
+}
+
+.scrollbar-dark::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollbar-dark::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-dark::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 6px;
+}
+
+.scrollbar-dark::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { getGraph, getGraphProcess } from '../services/graphService';
 import type { GraphApiResponse } from '../types/Graph.types';
+import { useFilterStore } from "./filterStore";
 
 interface GraphState {
   graphData: any;
@@ -36,13 +37,18 @@ export const useGraphStore = create<GraphState>((set,get) => ({
   loading: false,
   error: null,
   fetchGraph: async () => {
+    set({ graphData: { nodes: [], links: [] } });
     set({ loading: true, error: null });
+
     try {
-      const data = await getGraph();
+      const filters = useFilterStore.getState().buildQuery();
+
+      const data = await getGraph(filters);
+
       set({ graphData: mapGraphData(data), loading: false });
+
     } catch (err) {
       set({ error: "No se pudo cargar el grafo", loading: false });
-      console.error(err);
     }
   },
   fetchGraphByMemory: async (memoryId: number) => {

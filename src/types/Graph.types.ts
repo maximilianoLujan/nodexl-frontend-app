@@ -42,3 +42,5 @@ export type GraphEdge = {
   target: string;
   type: "has_category" | "authored" | string;
 };
+
+export type VertexType = GraphVertex["type"];

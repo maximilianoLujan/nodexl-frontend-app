@@ -1,7 +1,7 @@
 import apiUrl from "../config/apiConfig";
 
-const getGraph = async () => {
-  const res = await fetch(`${apiUrl}/grafo/procesos`);
+const getGraph = async (filters: string) => {
+  const res = await fetch(`${apiUrl}/grafo/procesos${filters}`);
 
   if (!res.ok) {
     throw new Error("Error al obtener el grafo");

@@ -5,34 +5,93 @@ import importMemories from "../../services/importerService";
 import { useGraphStore } from "../../store/graphStore";
 import getMemories from "../../services/memoriesService";
 import type { Memory } from "../../types/MemoryTypes";
+import type { Person } from "../../types/Person.types";
+import getPersonas from "../../services/personasService";
+import { useFilterStore } from "../../store/filterStore";
+import { getYearFromFilename } from "../../utils/memoriUtils";
+import { IoCalendarNumberOutline } from "react-icons/io5";
+import { IoMdPerson } from "react-icons/io";
+
 
 export default function Header() {
+  const { filters, addFilter, removeFilter } = useFilterStore();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedFile, setSelectedFiles] = useState<File | null>(null);
   const [uploadStatus, setUploadStatus] = useState<"idle" | "uploading" | "success" | "error">("idle");
-  const {fetchGraph, clearGraph,fetchGraphByMemory} = useGraphStore((state) => state);
+  const {fetchGraph} = useGraphStore((state) => state);
   const [memories, setMemories] = useState<Memory[]>([]);
-  const [loadingMemories, setLoadingMemories] = useState(false);
+  const [personas, setPersonas] = useState < Person[]>([])
   const [isOpen, setIsOpen] = useState(false);
-  const [selected, setSelected] = useState<number[]>([]);
+  const [isOpenPersonas,setIsOpenPersonas] = useState(false)
 
-  const toggleSelection = (id: number) => {
-    setSelected((prev) =>
-      prev.includes(id)
-        ? prev.filter((item) => item !== id)
-        : [...prev, id]
-    );
+  const selectedMemories = filters
+    .filter((f) => f.type === "year")
+    .map((f) => f.id);
+
+  const selectedPersons = filters
+    .filter((f) => f.type === "person")
+    .map((f) => f.id);
+
+  const toggleSelection = (memory: Memory) => {
+    const exists = selectedMemories.includes(memory.id);
+
+    const value = getYearFromFilename(memory.filename)
+
+    if(!value) return;
+
+    if (exists) {
+      removeFilter({
+        id: memory.id,
+        type: "year",
+        value: value,
+        label: memory.filename,
+      });
+    } else {
+      addFilter({
+        id: memory.id,
+        type: "year",
+        value,
+        label: memory.filename,
+      });
+    }
+  };
+
+  const togglePerson = (persona: Person) => {
+    const exists = selectedPersons.includes(persona.id);
+
+    if (exists) {
+      removeFilter({
+        id: persona.id,
+        type: "person",
+        value: persona.label,
+        label: persona.label
+      });
+    } else {
+      addFilter({
+        id: persona.id,
+        type: "person",
+        value: persona.label,
+        label: persona.label
+      });
+    }
   };
 
   const fetchMemories = async () => {
     try {
-      setLoadingMemories(true);
       const data = await getMemories();
       setMemories(data);
     } catch (error) {
       console.error("Error cargando memorias:", error);
-    } finally {
-      setLoadingMemories(false);
+    }
+  };
+
+
+  const fetchPersonas = async () => {
+    try {
+      const data = await getPersonas();
+      setPersonas(data);
+    } catch (error) {
+      console.error("Error cargando memorias:", error);
     }
   };
 
@@ -49,8 +108,6 @@ export default function Header() {
     try {
       setUploadStatus("uploading");
       const response = await importMemories(selectedFile)
-
-      console.log(response)
 
       if (!response.summary) throw new Error("Error en la subida");
 
@@ -83,23 +140,16 @@ export default function Header() {
   }, []);
 
   useEffect(() => {
+    fetchPersonas()
+  }, []);
+
+  useEffect(() => {
     const loadSelectedMemories = async () => {
-      if (selected.length === 0) {
-        // Si no hay filtros, cargamos todo
-        await fetchGraph();
-        return;
-      }
-
-      // Si hay filtros, limpiamos y cargamos solo esas memorias
-      clearGraph();
-
-      for (const id of selected) {
-        await fetchGraphByMemory(id);
-      }
+      await fetchGraph()
     };
 
     loadSelectedMemories();
-  }, [selected]);
+  }, [filters]);
 
   return (
     <>
@@ -123,7 +173,7 @@ export default function Header() {
               Memorias
             </h3>
             <span className="text-slate-400 text-xs">
-              0 documentos
+              {memories.length} documentos
             </span>
           </div>
         </div>
@@ -157,25 +207,54 @@ export default function Header() {
           <div className="relative w-64">
             <button
               onClick={() => setIsOpen(!isOpen)}
-              className="w-full bg-slate-800 text-slate-200 text-sm px-4 py-2 rounded-lg border border-slate-700 text-left"
+              className="w-full bg-slate-800 text-slate-200 text-sm px-4 py-2 rounded-lg border border-slate-700 text-left flex items-center gap-2 hover:bg-slate-700 transition"
             >
-              {selected.length === 0
-                ? "Todas las memorias"
-                : `${selected.length} seleccionadas`}
+              <IoCalendarNumberOutline className="text-teal-400 text-lg" />
+
+              <span>
+                {selectedMemories.length === 0
+                  ? "Todas las memorias"
+                  : `${selectedMemories.length} seleccionadas`}
+              </span>
             </button>
 
             {isOpen && (
-              <div className="absolute mt-2 w-full bg-slate-900 border border-slate-700 rounded-lg shadow-lg max-h-60 overflow-y-auto z-50">
+              <div
+                className="
+                  absolute mt-2 w-full
+                  bg-slate-900
+                  border border-slate-700
+                  rounded-lg
+                  shadow-lg
+                  max-h-60
+                  overflow-y-auto
+                  scrollbar-dark
+                  z-50
+                "
+              >
                 {memories.map((memory) => (
                   <label
                     key={memory.id}
-                    className="flex items-center gap-3 px-4 py-2 hover:bg-slate-800 cursor-pointer"
+                    className="
+                      flex items-center gap-3 px-4 py-2
+                      hover:bg-slate-800
+                      cursor-pointer
+                      transition
+                    "
                   >
                     <input
                       type="checkbox"
-                      checked={selected.includes(memory.id)}
-                      onChange={() => toggleSelection(memory.id)}
-                      className="accent-teal-500"
+                      checked={selectedMemories.includes(memory.id)}
+                      onChange={() => toggleSelection(memory)}
+                      className="
+                        h-4 w-4
+                        rounded
+                        border-slate-600
+                        bg-slate-800
+                        text-teal-500
+                        focus:ring-teal-500
+                        focus:ring-2
+                      "
                     />
                     <span className="text-slate-200 text-sm">
                       {memory.filename}
@@ -186,9 +265,51 @@ export default function Header() {
             )}
           </div>
 
-          <select className="bg-slate-800 text-slate-200 text-sm px-4 py-2 rounded-lg border border-slate-700 focus:outline-none">
-            <option>Todos los autores</option>
-          </select>
+          <div className="relative w-64">
+            <button
+              onClick={() => setIsOpenPersonas(!isOpenPersonas)}
+              className="w-full bg-slate-800 text-slate-200 text-sm px-4 py-2 rounded-lg border border-slate-700 text-left flex items-center gap-2 hover:bg-slate-700 transition"
+            >
+              <IoMdPerson className="text-teal-400 text-lg" />
+
+              <span>
+                {selectedPersons.length === 0
+                  ? "Todos los autores"
+                  : `${selectedPersons.length} seleccionados`}
+              </span>
+            </button>
+
+            {isOpenPersonas && (
+              <div className="absolute mt-2 w-full bg-slate-900 border border-slate-700 rounded-lg shadow-lg max-h-60 overflow-y-auto scrollbar-dark z-50">
+                {personas.map((persona) => (
+                  <label
+                    key={persona.id}
+                    className="flex items-center gap-3 px-4 py-2 hover:bg-slate-800 cursor-pointer transition"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedPersons.includes(persona.id)}
+                      onChange={() => togglePerson(persona)}
+                      className="
+                        h-4 w-4
+                        rounded
+                        border-slate-600
+                        bg-slate-800
+                        text-teal-500
+                        focus:ring-teal-500
+                        focus:ring-2
+                      "
+                    />
+
+                    <span className="text-slate-200 text-sm">
+                      {persona.label}
+                    </span>
+                  </label>
+                ))}
+
+              </div>
+            )}
+          </div>
 
         </div>
       </header>

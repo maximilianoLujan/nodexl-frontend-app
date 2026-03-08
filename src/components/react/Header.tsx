@@ -6,11 +6,14 @@ import { useGraphStore } from "../../store/graphStore";
 import getMemories from "../../services/memoriesService";
 import type { Memory } from "../../types/MemoryTypes";
 import type { Person } from "../../types/Person.types";
+import type { Categorie } from "../../types/Categorie.types";
 import getPersonas from "../../services/personasService";
 import { useFilterStore } from "../../store/filterStore";
 import { getYearFromFilename } from "../../utils/memoriUtils";
 import { IoCalendarNumberOutline } from "react-icons/io5";
 import { IoMdPerson } from "react-icons/io";
+import { MdCategory } from "react-icons/md";
+import getCategories from "../../services/categoriesService";
 
 
 export default function Header() {
@@ -21,8 +24,10 @@ export default function Header() {
   const {fetchGraph} = useGraphStore((state) => state);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [personas, setPersonas] = useState < Person[]>([])
+  const [categories, setCategories] = useState<Categorie[]>([])
   const [isOpen, setIsOpen] = useState(false);
   const [isOpenPersonas,setIsOpenPersonas] = useState(false)
+  const [isOpenCategories,setIsOpenCategories] = useState<boolean>(false);
 
   const selectedMemories = filters
     .filter((f) => f.type === "year")
@@ -30,6 +35,10 @@ export default function Header() {
 
   const selectedPersons = filters
     .filter((f) => f.type === "person")
+    .map((f) => f.id);
+
+  const selectedCategories = filters
+    .filter((f) => f.type === "category")
     .map((f) => f.id);
 
   const toggleSelection = (memory: Memory) => {
@@ -76,6 +85,26 @@ export default function Header() {
     }
   };
 
+  const toggleCategory = (category: Categorie) => {
+    const exists = selectedCategories.includes(category.id);
+
+    if (exists) {
+      removeFilter({
+        id: category.id,
+        type: "category",
+        value: category.name,
+        label: category.name
+      });
+    } else {
+      addFilter({
+        id: category.id,
+        type: "category",
+        value: category.name,
+        label: category.name
+      });
+    }
+  };
+
   const fetchMemories = async () => {
     try {
       const data = await getMemories();
@@ -94,6 +123,15 @@ export default function Header() {
       console.error("Error cargando memorias:", error);
     }
   };
+
+  const fetchCategories = async () => {
+    try {
+      const data = await getCategories();
+      setCategories(data);
+    } catch (error) {
+      console.error("Error cargando memorias:", error);
+    }
+  }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -144,6 +182,10 @@ export default function Header() {
   }, []);
 
   useEffect(() => {
+    fetchCategories()
+  }, []);
+
+  useEffect(() => {
     const loadSelectedMemories = async () => {
       await fetchGraph()
     };
@@ -154,11 +196,11 @@ export default function Header() {
   return (
     <>
       <header className="
-        bg-slate-900 border-b border-slate-800
+      bg-slate-900 border-b border-slate-800
         px-4 py-3
         grid gap-4
         grid-cols-1
-        md:grid-cols-3
+        md:grid-cols-[auto_1fr_auto]
         md:items-center
       ">
 
@@ -307,6 +349,51 @@ export default function Header() {
                   </label>
                 ))}
 
+              </div>
+            )}
+          </div>
+
+          <div className="relative w-64">
+            <button
+              onClick={() => setIsOpenCategories(!isOpenCategories)}
+              className="w-full bg-slate-800 text-slate-200 text-sm px-4 py-2 rounded-lg border border-slate-700 text-left flex items-center gap-2 hover:bg-slate-700 transition"
+            >
+              <MdCategory className="text-teal-400 text-lg" />
+
+              <span>
+                {selectedCategories.length === 0
+                  ? "Todas las categorías"
+                  : `${selectedCategories.length} seleccionadas`}
+              </span>
+            </button>
+
+            {isOpenCategories && (
+              <div className="absolute mt-2 w-full bg-slate-900 border border-slate-700 rounded-lg shadow-lg max-h-60 overflow-y-auto scrollbar-dark z-50">
+                {categories.map((category) => (
+                  <label
+                    key={category.id}
+                    className="flex items-center gap-3 px-4 py-2 hover:bg-slate-800 cursor-pointer transition"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedCategories.includes(category.id)}
+                      onChange={() => toggleCategory(category)}
+                      className="
+                        h-4 w-4
+                        rounded
+                        border-slate-600
+                        bg-slate-800
+                        text-teal-500
+                        focus:ring-teal-500
+                        focus:ring-2
+                      "
+                    />
+
+                    <span className="text-slate-200 text-sm">
+                      {category.name}
+                    </span>
+                  </label>
+                ))}
               </div>
             )}
           </div>

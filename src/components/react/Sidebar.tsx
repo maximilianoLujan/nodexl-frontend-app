@@ -73,8 +73,8 @@ export default function Sidebar() {
         <div className="space-y-2 text-sm text-slate-300">
 
           <LegendItem color="bg-teal-500" label="Memorias" />
-          <LegendItem color="bg-indigo-500" label="Personas" />
-          <LegendItem color="bg-amber-500" label="Categorías" />
+          <LegendItem color="bg-amber-500" label="Personas" />
+          <LegendItem color="bg-indigo-500" label="Categorías" />
 
         </div>
       </div>

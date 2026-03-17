@@ -94,7 +94,7 @@ jobs:
           repository: ${{ env.BACKEND_REPO }}
           run-id: ${{ steps.get_run.outputs.run_id }}
           github-token: ${{ secrets.GH_PAT }}
-          path: src-tauri/bin
+          path: src-tauri/bin/backend
 
       - name: Build desktop app (Tauri)
         run: npm run tauri -- build --bundles nsis

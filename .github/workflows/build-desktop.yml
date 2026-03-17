@@ -96,45 +96,6 @@ jobs:
           github-token: ${{ secrets.GH_PAT }}
           path: src-tauri/bin
 
-      - name: Validate backend folder
-        shell: pwsh
-        run: |
-          $expectedDir = "src-tauri/bin/backend"
-          $expectedExe = Join-Path $expectedDir "backend.exe"
-
-          if (-not (Test-Path $expectedExe)) {
-            # Some artifacts may include the backend folder nested (e.g. dist/backend/backend.exe).
-            # Find the backend.exe and move its whole containing folder to the expected location.
-            $exe = Get-ChildItem -Path "src-tauri/bin" -Recurse -File | Where-Object { $_.Name -ieq "backend.exe" } | Select-Object -First 1
-            if (-not $exe) {
-              Write-Error "Could not find backend.exe inside downloaded artifact under src-tauri/bin."
-              exit 1
-            }
-
-            $srcDir = Split-Path -Parent $exe.FullName
-            if (-not (Test-Path $srcDir)) {
-              Write-Error "Backend directory not found: $srcDir"
-              exit 1
-            }
-
-            if (Test-Path $expectedDir) {
-              Remove-Item -Recurse -Force $expectedDir
-            }
-
-            # Ensure parent exists
-            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $expectedDir) | Out-Null
-
-            Move-Item -Force $srcDir $expectedDir
-          }
-
-          if (-not (Test-Path $expectedExe)) {
-            Write-Error "backend.exe is missing at expected location: $expectedExe"
-            exit 1
-          }
-
-          Write-Host "Backend folder contents (top-level):"
-          Get-ChildItem -Path $expectedDir -Force | Format-Table -AutoSize
-
       - name: Build desktop app (Tauri)
         run: npm run tauri -- build --bundles nsis
 

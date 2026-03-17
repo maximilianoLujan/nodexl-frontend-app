@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "tauri-app",
+  "productName": "nodexl-desktop",
   "version": "0.1.0",
-  "identifier": "com.operativa.tauri-app",
+  "identifier": "com.operativa.nodexl-desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:4321",
@@ -32,6 +32,11 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "externalBin": ["bin/backend/backend"]
+    "resources": ["bin/backend/backend.exe", "bin/backend/_internal/**/*"],
+    "windows": {
+      "nsis": {
+        "installerHooks": "nsis/installer-hooks.nsh"
+      }
+    }
   }
 }

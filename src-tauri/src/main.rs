@@ -2,13 +2,21 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::{
+    fs,
+    io::Write,
     net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream},
     path::PathBuf,
-    process::Command,
+    process::{Command, Stdio},
     sync::{Mutex, OnceLock},
     time::Duration,
 };
 use tauri::{path::BaseDirectory, Manager, RunEvent};
+
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 static BACKEND_PID: OnceLock<Mutex<Option<u32>>> = OnceLock::new();
 
@@ -41,6 +49,88 @@ fn kill_backend_if_spawned() {
     }
 }
 
+fn log_startup_issue(message: &str) {
+    // Release builds on Windows don't have a console window, so make failures discoverable.
+    let mut path = std::env::temp_dir();
+    path.push("nodexl-desktop-startup.log");
+
+    if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(path) {
+        let _ = writeln!(file, "{message}");
+    }
+}
+
+fn find_backend_binary(app: &tauri::App) -> Option<PathBuf> {
+    if cfg!(debug_assertions) {
+        let filename = if cfg!(windows) {
+            "backend.exe"
+        } else {
+            "backend"
+        };
+        return Some(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("bin")
+                .join("backend")
+                .join(filename),
+        );
+    }
+
+    // Bundled app: prefer backend.exe (what our runtime code historically expects).
+    if cfg!(windows) {
+        if let Ok(path) = app
+            .path()
+            .resolve("bin/backend/backend.exe", BaseDirectory::Resource)
+        {
+            if path.exists() {
+                return Some(path);
+            }
+        }
+    } else if let Ok(path) = app
+        .path()
+        .resolve("bin/backend/backend", BaseDirectory::Resource)
+    {
+        if path.exists() {
+            return Some(path);
+        }
+    }
+
+    // Fallback: scan the backend resource directory for target-suffixed binaries,
+    // e.g. backend-x86_64-pc-windows-msvc.exe.
+    let backend_dir = match app.path().resolve("bin/backend", BaseDirectory::Resource) {
+        Ok(dir) => dir,
+        Err(_) => return None,
+    };
+
+    let entries = fs::read_dir(&backend_dir).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        if cfg!(windows) {
+            let name = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+
+            if (name == "backend.exe" || (name.starts_with("backend-") && name.ends_with(".exe")))
+                && path.exists()
+            {
+                return Some(path);
+            }
+        } else {
+            if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
+                if name == "backend" || name.starts_with("backend-") {
+                    return Some(path);
+                }
+            }
+        }
+    }
+
+    None
+}
+
 fn main() {
     let app = tauri::Builder::default()
         .setup(|app| {
@@ -53,29 +143,39 @@ fn main() {
                 return Ok(());
             }
 
-            let backend_filename = if cfg!(windows) {
-                "backend.exe"
-            } else {
-                "backend"
+            let Some(backend) = find_backend_binary(app) else {
+                log_startup_issue(
+                    "Backend binary not found. Expected under resources: bin/backend/*",
+                );
+                return Ok(());
             };
 
-            let backend: PathBuf = if cfg!(debug_assertions) {
-                // `tauri dev` runs the binary from the source tree, so use the checked-in path.
-                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                    .join("bin")
-                    .join("backend")
-                    .join(backend_filename)
-            } else {
-                // Bundled app: external binaries are available from the Resource directory.
-                let backend_rel_path = format!("bin/backend/{backend_filename}");
-                app.path()
-                    .resolve(backend_rel_path, BaseDirectory::Resource)
-                    .expect("backend not found")
-            };
+            let mut cmd = Command::new(&backend);
+            if let Some(parent) = backend.parent() {
+                // Helps backends that expect sibling folders/assets via relative paths.
+                cmd.current_dir(parent);
+            }
 
-            let child = Command::new(backend)
-                .spawn()
-                .expect("failed to start backend");
+            // In Windows release builds, ensure the backend runs truly in the background
+            // (no visible console window).
+            #[cfg(windows)]
+            if !cfg!(debug_assertions) {
+                cmd.creation_flags(CREATE_NO_WINDOW);
+                cmd.stdin(Stdio::null());
+                cmd.stdout(Stdio::null());
+                cmd.stderr(Stdio::null());
+            }
+
+            let child = match cmd.spawn() {
+                Ok(child) => child,
+                Err(err) => {
+                    log_startup_issue(&format!(
+                        "Failed to start backend at {}: {err}",
+                        backend.display()
+                    ));
+                    return Ok(());
+                }
+            };
 
             if let Ok(mut guard) = backend_pid_cell().lock() {
                 *guard = Some(child.id());

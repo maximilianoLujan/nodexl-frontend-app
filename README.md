@@ -1,46 +1,62 @@
-# Astro Starter Kit: Basics
+# NodeXL Desktop (Tauri + Astro)
 
-```sh
-npm create astro@latest -- --template basics
+Este repo contiene el frontend (Astro + React) y la app desktop (Tauri v2). El instalador de Windows se genera con NSIS (un `.exe`).
+
+## Requisitos
+
+- Node.js 20+
+- Rust toolchain estable (MSVC en Windows)
+- Windows (para generar el instalador `.exe` con NSIS)
+
+En Windows, asegurate de tener instalado **Microsoft Visual C++ Build Tools** (lo más fácil es instalar _Visual Studio Build Tools_ con el workload de _Desktop development with C++_).
+
+## Estructura esperada del backend
+
+Para el build desktop, el backend debe estar en:
+
+`src-tauri/bin/backend/`
+
+con al menos:
+
+- `backend.exe`
+- `_internal/` (carpeta requerida por el backend)
+
+Ejemplo:
+
+`src-tauri/bin/backend/backend.exe`
+
+`src-tauri/bin/backend/_internal/...`
+
+## Instalar dependencias
+
+```bash
+npm ci
 ```
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+## Build del instalador `.exe` (Windows)
 
-## 🚀 Project Structure
+Este comando genera el instalador NSIS (más rápido que bundlear todo):
 
-Inside of your Astro project, you'll see the following folders and files:
-
-```text
-/
-├── public/
-│   └── favicon.svg
-├── src
-│   ├── assets
-│   │   └── astro.svg
-│   ├── components
-│   │   └── Welcome.astro
-│   ├── layouts
-│   │   └── Layout.astro
-│   └── pages
-│       └── index.astro
-└── package.json
+```bash
+npm run tauri -- build --bundles nsis
 ```
 
-To learn more about the folder structure of an Astro project, refer to [our guide on project structure](https://docs.astro.build/en/basics/project-structure/).
+### Salida
 
-## 🧞 Commands
+El instalador queda en:
 
-All commands are run from the root of the project, from a terminal:
+`src-tauri/target/release/bundle/nsis/*.exe`
 
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
+Ejemplo:
 
-## 👀 Want to learn more?
+`src-tauri/target/release/bundle/nsis/nodexl-desktop_0.1.0_x64-setup.exe`
 
-Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+## Notas de ejecución
+
+- En release, el backend se ejecuta en segundo plano (sin ventana de consola).
+- Si el backend no puede iniciarse en una instalación release, se registra un log en:
+  - `%TEMP%\\nodexl-desktop-startup.log`
+
+## CI (GitHub Actions)
+
+El workflow de desktop descarga el backend como artifact, lo coloca bajo `src-tauri/bin/backend`, buildea el instalador NSIS y lo sube como artifact (y como asset de Release cuando el push es un tag `v*`).

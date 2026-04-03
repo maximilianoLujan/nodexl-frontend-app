@@ -178,12 +178,14 @@ export default function Header() {
   }, []);
 
   useEffect(() => {
+    if(memories.length < 1) return;
     fetchPersonas()
-  }, []);
+  }, [memories]);
 
   useEffect(() => {
+    if(memories.length < 1) return;
     fetchCategories()
-  }, []);
+  }, [memories]);
 
   useEffect(() => {
     const loadSelectedMemories = async () => {

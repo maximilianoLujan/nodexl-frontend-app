@@ -1,13 +1,27 @@
-import { useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import ForceGraph3D from "react-force-graph-3d";
 import { useGraphStore } from "../../store/graphStore";
 import { MOUSE } from "three";
 import { NODE_COLORS } from "../../constants/graphColors";
+import * as THREE from "three";
 import type { GraphVertex } from "../../types/Graph.types";
+import  { useFilterStore } from "../../store/filterStore"
+
+const normalize = (str: string) =>
+  str.toLowerCase().replace(/,/g, "").trim();
+
 
 export default function MemoryGraph() {
-  const { graphData, loading, error, fetchGraph } = useGraphStore();
+ const [size, setSize] = useState({
+    width: window.innerWidth - 340,
+    height: window.innerHeight - 65
+  });
+  const { graphData,metrics, loading, error, fetchGraph } = useGraphStore();
+  const { filters } = useFilterStore();
   const graphRef = useRef<any>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const personNameFilters = filters.filter((p) => p.type === 'person').map((person) => person.value);
 
   useEffect(() => {
     if (!graphRef.current) return;
@@ -26,11 +40,39 @@ export default function MemoryGraph() {
 
   }, [graphData]);
 
+  const isHighlighted = (node: GraphVertex) => {
+    if (node.type !== "person") return false;
+
+    const nodeTokens = normalize(node.label).split(" ");
+
+    return personNameFilters.some((name) => {
+      if (typeof name !== "string") return false;
+
+      const filterTokens = normalize(name).split(" ");
+      return nodeTokens.every(token => filterTokens.includes(token));
+    });
+  };
+
   useEffect(() => {
     if (!graphData) {
       fetchGraph();
     }
   }, [fetchGraph, graphData]);
+
+  useEffect(() => {
+  const updateSize = () => {
+    if (containerRef.current) {
+      setSize({
+        width: containerRef.current.clientWidth,
+        height: containerRef.current.clientHeight
+      });
+    }
+  };
+
+  updateSize();
+  window.addEventListener("resize", updateSize);
+  return () => window.removeEventListener("resize", updateSize);
+}, []);
 
   if (loading) return (
     <div className="flex items-center justify-center h-150 text-slate-400">
@@ -49,7 +91,8 @@ export default function MemoryGraph() {
 
   return (
     <div 
-      style={{ width: "100%", height: "600px" }}
+      ref={containerRef}
+      className="relative w-full h-full"
       onMouseDown={(e) => {
         if (e.button === 0) { // click izquierdo
           e.currentTarget.style.cursor = "grabbing";
@@ -61,20 +104,97 @@ export default function MemoryGraph() {
       onMouseLeave={(e) => {
         e.currentTarget.style.cursor = "grab";
       }}
-      >
-      <ForceGraph3D
-        ref={graphRef}
-        graphData={graphData}
-        nodeColor={(node: GraphVertex) => NODE_COLORS[node.type]}
-        nodeLabel={(node: any) =>
-          node.type === "publication"
-            ? `📄 Publicación: ${node.label}`
-            : node.type === "person"
-              ? `🧍 Persona: ${node.label}`
-              : `🗂 Categoría: ${node.label}`
-        }
-        
-      />
+    >
+      <div className="absolute inset-0">
+        <ForceGraph3D
+          width={size.width}
+          height={size.height}
+          ref={graphRef}
+          graphData={graphData}
+
+          nodeThreeObject={(node: GraphVertex) => {
+            const group = new THREE.Group();
+
+            const baseColor = NODE_COLORS[node.type];
+            const size = isHighlighted(node) ? 6 : 4;
+
+            // 👉 BORDE primero
+            if (isHighlighted(node)) {
+              const border = new THREE.Mesh(
+                new THREE.SphereGeometry(size * 1.25),
+                new THREE.MeshBasicMaterial({
+                  color: "#ffffff",
+                  transparent: true,
+                  opacity: 0.25, // 🔥 clave: bajá esto
+                  depthWrite: false // evita que tape
+                })
+              );
+
+              group.add(border);
+            }
+
+            // 👉 esfera principal después
+            const main = new THREE.Mesh(
+              new THREE.SphereGeometry(size),
+              new THREE.MeshStandardMaterial({
+                color: baseColor
+              })
+            );
+
+            group.add(main);
+
+            return group;
+          }}
+
+          nodeLabel={(node: any) =>
+            node.type === "publication"
+              ? `📄 Publicación: ${node.label}`
+              : node.type === "person"
+                ? `🧍 Persona: ${node.label}`
+                : `🗂 Categoría: ${node.label}`
+          }
+        />
+
+      </div>
+    <div className="absolute bottom-6 right-6 z-[999] pointer-events-auto
+      bg-gradient-to-br from-slate-900/90 to-slate-800/80
+      backdrop-blur-md text-slate-100
+      p-5 rounded-2xl border border-slate-700/50
+      shadow-2xl w-[260px] sm:w-[300px]">
+
+      <p className="text-sm font-semibold mb-3 text-slate-300 tracking-wide">
+        📊 Métricas
+      </p>
+
+      <div className="space-y-2 text-sm">
+        <div className="flex justify-between">
+          <span className="text-slate-400">Autores</span>
+          <span className="font-medium">{metrics.authors_count}</span>
+        </div>
+
+        <div className="flex justify-between">
+          <span className="text-slate-400">Artículos</span>
+          <span className="font-medium">{metrics.articles_count}</span>
+        </div>
+
+        <div className="flex justify-between">
+          <span className="text-slate-400">Categorías</span>
+          <span className="font-medium">{metrics.category_count}</span>
+        </div>
+
+        <div className="border-t border-slate-700/50 my-2" />
+
+        <div className="flex justify-between">
+          <span className="text-slate-400">Nodos</span>
+          <span className="font-medium">{graphData.nodes.length}</span>
+        </div>
+
+        <div className="flex justify-between">
+          <span className="text-slate-400">Links</span>
+          <span className="font-medium">{graphData.links.length}</span>
+        </div>
+      </div>
     </div>
+  </div>
   );
 }

@@ -1,14 +1,12 @@
 import LegendItem from "./LegendItem";
-import { FaFilter } from "react-icons/fa";
 import FilterSection from "./FilterSection";
 import FilterItem from "./FilterItem";
 import { useFilterStore } from "../../store/filterStore";
-import FilterChip from "./FilterChip";
 import { IoMdPerson } from "react-icons/io";
 import { IoCalendarNumberOutline, IoPricetagOutline } from "react-icons/io5";
 
 export default function Sidebar() {
-  const { filters, removeFilter, clearFilters } = useFilterStore();
+  const { filters, removeFilter } = useFilterStore();
 
   const yearFilters = filters.filter((f) => f.type === "year");
   const personFilters = filters.filter((f) => f.type === "person");
@@ -16,8 +14,7 @@ export default function Sidebar() {
 
   return (
     <aside className="sidebar h-full bg-slate-900 border-r border-slate-800 flex flex-col p-4">
-
-      <div className="mb-6">
+      <div className="mb-6 max-h-[500px] overflow-y-auto custom-scroll">
         <FilterSection
           title={`Años (${yearFilters.length})`}
           icon={<IoCalendarNumberOutline />}
@@ -42,7 +39,7 @@ export default function Sidebar() {
               key={filter.id}
               filter={filter}
               icon={<IoMdPerson />}
-              color="bg-amber-500/10 border-amber-500/30 text-amber-300"
+              color="bg-indigo-500/10 border-indigo-500/30 text-indigo-300"
               onRemove={removeFilter}
             />
           ))}
@@ -57,7 +54,7 @@ export default function Sidebar() {
               key={filter.id}
               filter={filter}
               icon={<IoPricetagOutline />}
-              color="bg-indigo-500/10 border-indigo-500/30 text-indigo-300"
+              color="bg-amber-500/10 border-amber-500/30 text-amber-300"
               onRemove={removeFilter}
             />
           ))}
@@ -73,8 +70,8 @@ export default function Sidebar() {
         <div className="space-y-2 text-sm text-slate-300">
 
           <LegendItem color="bg-teal-500" label="Memorias" />
-          <LegendItem color="bg-amber-500" label="Personas" />
-          <LegendItem color="bg-indigo-500" label="Categorías" />
+          <LegendItem color="bg-indigo-500" label="Personas" />
+          <LegendItem color="bg-amber-500" label="Categorías" />
 
         </div>
       </div>

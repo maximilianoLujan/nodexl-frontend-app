@@ -5,6 +5,7 @@ import { useFilterStore } from "./filterStore";
 
 interface GraphState {
   graphData: any;
+  metrics: any;
   loading: boolean;
   error: string | null;
   fetchGraph: () => Promise<void>;
@@ -34,6 +35,7 @@ const mapGraphData = (apiData: GraphApiResponse) => {
 
 export const useGraphStore = create<GraphState>((set,get) => ({
   graphData: null,
+  metrics: null,
   loading: false,
   error: null,
   fetchGraph: async () => {
@@ -45,7 +47,7 @@ export const useGraphStore = create<GraphState>((set,get) => ({
 
       const data = await getGraph(filters);
 
-      set({ graphData: mapGraphData(data), loading: false });
+      set({ graphData: mapGraphData(data), loading: false, metrics: data.summary });
 
     } catch (err) {
       set({ error: "No se pudo cargar el grafo", loading: false });
@@ -96,6 +98,6 @@ export const useGraphStore = create<GraphState>((set,get) => ({
   },
 
   clearGraph: () => {
-    set({ graphData: { nodes: [], links: [] } });
+    set({ graphData: { nodes: [], links: [] }, metrics: null });
   },
 }));

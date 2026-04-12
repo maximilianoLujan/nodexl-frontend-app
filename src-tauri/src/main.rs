@@ -133,6 +133,7 @@ fn find_backend_binary(app: &tauri::App) -> Option<PathBuf> {
 
 fn main() {
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             // If the backend is already running (e.g. started manually), don't spawn a second instance.
             // This avoids: "[Errno 10048] ... bind on address ('127.0.0.1', 8000)".

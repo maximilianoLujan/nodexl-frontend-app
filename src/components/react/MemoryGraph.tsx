@@ -21,6 +21,54 @@ export default function MemoryGraph() {
   const graphRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+const exportMetricsToCSV = async () => {
+  if (!metrics || !graphData) return;
+
+  const rows = [
+    ["Métrica", "Cantidad"],
+    ["Autores", metrics.authors_count],
+    ["Artículos", metrics.articles_count],
+    ["Categorías", metrics.category_count],
+    ["Nodos", graphData.nodes.length],
+    ["Links", graphData.links.length],
+  ];
+
+  const csvContent = "\uFEFF" + rows.map(r => r.join(";")).join("\n");
+  const fileName = `metricas_grafo_${new Date().toISOString().slice(0,10)}.csv`;
+
+  // 🔍 detectar entorno
+  const isTauri = typeof window !== "undefined" && "__TAURI__" in window;
+
+  if (isTauri) {
+    try {
+      const { writeTextFile, BaseDirectory } = await import("@tauri-apps/plugin-fs");
+
+      await writeTextFile(fileName, csvContent, {
+        baseDir: BaseDirectory.Download
+      });
+
+      console.log("CSV guardado en Descargas (Tauri) ✅");
+    } catch (err) {
+      console.error("Error guardando CSV en Tauri", err);
+    }
+
+  } else {
+    // 🌐 navegador
+    const blob = new Blob([csvContent], {
+      type: "text/csv;charset=utf-8;"
+    });
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    URL.revokeObjectURL(url);
+
+    console.log("CSV descargado (web) ✅");
+  }
+  };
+
   const personNameFilters = filters.filter((p) => p.type === 'person').map((person) => person.value);
 
   useEffect(() => {
@@ -194,6 +242,18 @@ export default function MemoryGraph() {
           <span className="font-medium">{graphData.links.length}</span>
         </div>
       </div>
+      <button
+        onClick={exportMetricsToCSV}
+        className="mt-4 w-full flex items-center justify-center gap-2
+          bg-gradient-to-r from-blue-500 to-indigo-500
+          hover:from-blue-600 hover:to-indigo-600
+          text-white text-sm font-medium
+          py-2 px-4 rounded-xl
+          transition-all duration-200
+          shadow-lg hover:shadow-xl active:scale-95 cursor-pointer"
+      >
+        ⬇ Exportar CSV
+      </button>
     </div>
   </div>
   );

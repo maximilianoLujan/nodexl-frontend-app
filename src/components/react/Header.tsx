@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { MdMemory } from "react-icons/md";
-import { FiUpload, FiX, FiLoader, FiCheckCircle, FiAlertCircle } from "react-icons/fi";
+import {
+  FiUpload,
+  FiX,
+  FiLoader,
+  FiCheckCircle,
+  FiAlertCircle,
+} from "react-icons/fi";
 import importMemories from "../../services/importerService";
 import { useGraphStore } from "../../store/graphStore";
 import getMemories from "../../services/memoriesService";
@@ -15,19 +21,20 @@ import { IoMdPerson } from "react-icons/io";
 import { MdCategory } from "react-icons/md";
 import getCategories from "../../services/categoriesService";
 
-
 export default function Header() {
   const { filters, addFilter, removeFilter } = useFilterStore();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedFile, setSelectedFiles] = useState<File | null>(null);
-  const [uploadStatus, setUploadStatus] = useState<"idle" | "uploading" | "success" | "error">("idle");
-  const {fetchGraph} = useGraphStore((state) => state);
+  const [uploadStatus, setUploadStatus] = useState<
+    "idle" | "uploading" | "success" | "error"
+  >("idle");
+  const { fetchGraph } = useGraphStore((state) => state);
   const [memories, setMemories] = useState<Memory[]>([]);
-  const [personas, setPersonas] = useState < Person[]>([])
-  const [categories, setCategories] = useState<Categorie[]>([])
+  const [personas, setPersonas] = useState<Person[]>([]);
+  const [categories, setCategories] = useState<Categorie[]>([]);
   const [isOpen, setIsOpen] = useState(false);
-  const [isOpenPersonas,setIsOpenPersonas] = useState(false)
-  const [isOpenCategories,setIsOpenCategories] = useState<boolean>(false);
+  const [isOpenPersonas, setIsOpenPersonas] = useState(false);
+  const [isOpenCategories, setIsOpenCategories] = useState<boolean>(false);
 
   const selectedMemories = filters
     .filter((f) => f.type === "year")
@@ -44,9 +51,9 @@ export default function Header() {
   const toggleSelection = (memory: Memory) => {
     const exists = selectedMemories.includes(memory.id);
 
-    const value = getYearFromFilename(memory.filename)
+    const value = getYearFromFilename(memory.filename);
 
-    if(!value) return;
+    if (!value) return;
 
     if (exists) {
       removeFilter({
@@ -73,14 +80,14 @@ export default function Header() {
         id: persona.id,
         type: "person",
         value: persona.label,
-        label: persona.label
+        label: persona.label,
       });
     } else {
       addFilter({
         id: persona.id,
         type: "person",
         value: persona.label,
-        label: persona.label
+        label: persona.label,
       });
     }
   };
@@ -93,14 +100,14 @@ export default function Header() {
         id: category.id,
         type: "category",
         value: category.name,
-        label: category.name
+        label: category.name,
       });
     } else {
       addFilter({
         id: category.id,
         type: "category",
         value: category.name,
-        label: category.name
+        label: category.name,
       });
     }
   };
@@ -113,7 +120,6 @@ export default function Header() {
       console.error("Error cargando memorias:", error);
     }
   };
-
 
   const fetchPersonas = async () => {
     try {
@@ -131,7 +137,7 @@ export default function Header() {
     } catch (error) {
       console.error("Error cargando memorias:", error);
     }
-  }
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -145,15 +151,15 @@ export default function Header() {
 
     try {
       setUploadStatus("uploading");
-      const response = await importMemories(selectedFile)
+      const response = await importMemories(selectedFile);
 
       if (!response.summary) throw new Error("Error en la subida");
 
       setUploadStatus("success");
-      
+
       // Refrescamos el grafo globalmente
       fetchGraph();
-      fetchMemories()
+      fetchMemories();
 
       setTimeout(() => {
         setIsModalOpen(false);
@@ -173,23 +179,104 @@ export default function Header() {
     setUploadStatus("idle");
   };
 
+  const formatDbActionError = (
+    action: "importar" | "exportar",
+    err: unknown,
+  ) => {
+    let raw = "";
+    if (err instanceof Error) {
+      raw = err.message;
+    } else if (typeof err === "string") {
+      raw = err;
+    } else {
+      try {
+        raw = JSON.stringify(err);
+      } catch {
+        raw = String(err);
+      }
+    }
+
+    const lower = (raw ?? "").toLowerCase();
+    const looksLikeNotTauri =
+      lower.includes("tauri") &&
+      (lower.includes("not") ||
+        lower.includes("missing") ||
+        lower.includes("undefined"));
+
+    if (looksLikeNotTauri) {
+      return `Esta acción solo está disponible en la app desktop (Tauri).`;
+    }
+
+    return `Error al ${action} la DB: ${raw || "desconocido"}`;
+  };
+
+  const handleImportDb = async () => {
+    try {
+      const [{ open }, { invoke }] = await Promise.all([
+        import("@tauri-apps/plugin-dialog"),
+        import("@tauri-apps/api/core"),
+      ]);
+
+      const selected = await open({
+        multiple: false,
+        filters: [{ name: "SQLite DB", extensions: ["db"] }],
+      });
+
+      if (!selected || Array.isArray(selected)) return;
+
+      await invoke("import_db", {
+        source_path: selected,
+        sourcePath: selected,
+      });
+
+      // refrescar data (el backend se reinicia)
+      await new Promise((r) => setTimeout(r, 800));
+      await fetchGraph();
+      await fetchMemories();
+    } catch (err) {
+      console.error("Error importando DB", err);
+      alert(formatDbActionError("importar", err));
+    }
+  };
+
+  const handleExportDb = async () => {
+    try {
+      const [{ save }, { invoke }] = await Promise.all([
+        import("@tauri-apps/plugin-dialog"),
+        import("@tauri-apps/api/core"),
+      ]);
+
+      const selected = await save({
+        defaultPath: "nodexl.db",
+        filters: [{ name: "SQLite DB", extensions: ["db"] }],
+      });
+
+      if (!selected) return;
+
+      await invoke("export_db", { dest_path: selected, destPath: selected });
+    } catch (err) {
+      console.error("Error exportando DB", err);
+      alert(formatDbActionError("exportar", err));
+    }
+  };
+
   useEffect(() => {
-    fetchMemories()
+    fetchMemories();
   }, []);
 
   useEffect(() => {
-    if(memories.length < 1) return;
-    fetchPersonas()
+    if (memories.length < 1) return;
+    fetchPersonas();
   }, [memories]);
 
   useEffect(() => {
-    if(memories.length < 1) return;
-    fetchCategories()
+    if (memories.length < 1) return;
+    fetchCategories();
   }, [memories]);
 
   useEffect(() => {
     const loadSelectedMemories = async () => {
-      await fetchGraph()
+      await fetchGraph();
     };
 
     loadSelectedMemories();
@@ -197,15 +284,16 @@ export default function Header() {
 
   return (
     <>
-      <header className="
+      <header
+        className="
       bg-slate-900 border-b border-slate-800
         px-4 py-3
         grid gap-4
         grid-cols-1
         md:grid-cols-[auto_1fr_auto]
         md:items-center
-      ">
-
+      "
+      >
         {/* TOP – Branding */}
         <div className="flex items-center gap-3 order-1">
           <div className="p-2 rounded-lg bg-slate-800">
@@ -213,9 +301,7 @@ export default function Header() {
           </div>
 
           <div className="flex flex-col leading-tight">
-            <h3 className="text-slate-100 font-semibold text-lg">
-              Memorias
-            </h3>
+            <h3 className="text-slate-100 font-semibold text-lg">Memorias</h3>
             <span className="text-slate-400 text-xs">
               {memories.length} documentos
             </span>
@@ -224,30 +310,64 @@ export default function Header() {
 
         {/* TOP RIGHT – Importar */}
         <div className="flex justify-end order-2 md:order-3">
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="
-              flex items-center gap-2
-              bg-teal-500 hover:bg-teal-400
-              text-slate-900 font-medium
-              px-4 py-2 rounded-lg
-              w-full md:w-auto
-              cursor-pointer
-            "
-          >
-            <FiUpload />
-            Importar
-          </button>
+          <div className="flex items-center gap-2 w-full md:w-auto">
+            <button
+              onClick={handleImportDb}
+              className="
+                flex items-center gap-2
+                bg-slate-800 hover:bg-slate-700
+                text-slate-100 font-medium
+                px-3 py-2 rounded-lg
+                border border-slate-700
+                w-full md:w-auto
+                cursor-pointer
+              "
+            >
+              Importar DB
+            </button>
+
+            <button
+              onClick={handleExportDb}
+              className="
+                flex items-center gap-2
+                bg-slate-800 hover:bg-slate-700
+                text-slate-100 font-medium
+                px-3 py-2 rounded-lg
+                border border-slate-700
+                w-full md:w-auto
+                cursor-pointer
+              "
+            >
+              Exportar DB
+            </button>
+
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="
+                flex items-center gap-2
+                bg-teal-500 hover:bg-teal-400
+                text-slate-900 font-medium
+                px-4 py-2 rounded-lg
+                w-full md:w-auto
+                cursor-pointer
+              "
+            >
+              <FiUpload />
+              Importar PDF
+            </button>
+          </div>
         </div>
 
         {/* BOTTOM – Filtros */}
-        <div className="
+        <div
+          className="
           flex flex-col gap-3
           order-3
           md:order-2
           md:flex-row
           md:justify-center
-        ">
+        "
+        >
           <div className="relative w-64">
             <button
               onClick={() => setIsOpen(!isOpen)}
@@ -350,7 +470,6 @@ export default function Header() {
                     </span>
                   </label>
                 ))}
-
               </div>
             )}
           </div>
@@ -399,7 +518,6 @@ export default function Header() {
               </div>
             )}
           </div>
-
         </div>
       </header>
 
@@ -408,8 +526,10 @@ export default function Header() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
             <div className="flex items-center justify-between p-4 border-b border-slate-800">
-              <h2 className="text-slate-100 font-semibold text-lg">Importar PDF</h2>
-              <button 
+              <h2 className="text-slate-100 font-semibold text-lg">
+                Importar PDF
+              </h2>
+              <button
                 onClick={closeModal}
                 disabled={uploadStatus === "uploading"}
                 className="text-slate-400 hover:text-slate-100 p-1 disabled:opacity-50"
@@ -417,33 +537,51 @@ export default function Header() {
                 <FiX size={20} />
               </button>
             </div>
-            
+
             <div className="p-6">
               {uploadStatus === "uploading" ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <FiLoader className="text-teal-400 animate-spin mb-4" size={48} />
-                  <p className="text-slate-100 font-medium">Procesando documentos...</p>
-                  <p className="text-slate-400 text-sm mt-1">Esto puede tardar unos segundos, por favor espera.</p>
+                  <FiLoader
+                    className="text-teal-400 animate-spin mb-4"
+                    size={48}
+                  />
+                  <p className="text-slate-100 font-medium">
+                    Procesando documentos...
+                  </p>
+                  <p className="text-slate-400 text-sm mt-1">
+                    Esto puede tardar unos segundos, por favor espera.
+                  </p>
                 </div>
               ) : uploadStatus === "success" ? (
                 <div className="flex flex-col items-center justify-center py-8 text-center">
                   <FiCheckCircle className="text-teal-400 mb-4" size={48} />
-                  <p className="text-slate-100 font-medium">¡Archivos subidos con éxito!</p>
-                  <p className="text-slate-400 text-sm">El modal se cerrará en breve...</p>
+                  <p className="text-slate-100 font-medium">
+                    ¡Archivos subidos con éxito!
+                  </p>
+                  <p className="text-slate-400 text-sm">
+                    El modal se cerrará en breve...
+                  </p>
                 </div>
               ) : (
                 <>
-                  <div className={`flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-8 transition-colors bg-slate-800/50 group ${
-                    uploadStatus === "error" ? "border-red-500/50" : "border-slate-700 hover:border-teal-500/50"
-                  }`}>
-                    <FiUpload className={`mb-3 ${uploadStatus === "error" ? "text-red-400" : "text-slate-500 group-hover:text-teal-400"}`} size={32} />
+                  <div
+                    className={`flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-8 transition-colors bg-slate-800/50 group ${
+                      uploadStatus === "error"
+                        ? "border-red-500/50"
+                        : "border-slate-700 hover:border-teal-500/50"
+                    }`}
+                  >
+                    <FiUpload
+                      className={`mb-3 ${uploadStatus === "error" ? "text-red-400" : "text-slate-500 group-hover:text-teal-400"}`}
+                      size={32}
+                    />
                     <p className="text-slate-300 text-sm text-center mb-4">
                       {selectedFile
-                        ? `Archivo seleccionado: ${selectedFile.name}` 
+                        ? `Archivo seleccionado: ${selectedFile.name}`
                         : "Haz clic para seleccionar o arrastra archivos PDF"}
                     </p>
-                    <input 
-                      type="file" 
+                    <input
+                      type="file"
                       accept=".pdf"
                       onChange={handleFileChange}
                       className="block w-full text-sm text-slate-400
@@ -459,18 +597,20 @@ export default function Header() {
                   {uploadStatus === "error" && (
                     <div className="flex items-center gap-2 mt-4 text-red-400 text-sm bg-red-400/10 p-3 rounded-lg">
                       <FiAlertCircle />
-                      <span>Hubo un error al subir los archivos. Inténtalo de nuevo.</span>
+                      <span>
+                        Hubo un error al subir los archivos. Inténtalo de nuevo.
+                      </span>
                     </div>
                   )}
-                  
+
                   <div className="flex justify-end gap-3 mt-6">
-                    <button 
+                    <button
                       onClick={closeModal}
                       className="px-4 py-2 text-slate-300 hover:text-slate-100 text-sm font-medium"
                     >
                       Cancelar
                     </button>
-                    <button 
+                    <button
                       onClick={handleUploadPdfs}
                       disabled={!selectedFile}
                       className="bg-teal-500 hover:bg-teal-400 text-slate-900 px-6 py-2 rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"

@@ -59,7 +59,7 @@ fn log_startup_issue(message: &str) {
     }
 }
 
-fn find_backend_binary(app: &tauri::App) -> Option<PathBuf> {
+fn find_backend_binary(app: &tauri::AppHandle) -> Option<PathBuf> {
     if cfg!(debug_assertions) {
         let filename = if cfg!(windows) {
             "backend.exe"
@@ -131,56 +131,141 @@ fn find_backend_binary(app: &tauri::App) -> Option<PathBuf> {
     None
 }
 
+fn spawn_backend(app: &tauri::AppHandle) -> Result<Option<u32>, String> {
+    // Avoid spawning a second instance if it's already running.
+    // This avoids: "[Errno 10048] ... bind on address ('127.0.0.1', 8000)".
+    let backend_port: u16 = 8000;
+    let backend_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), backend_port);
+    if is_listening(backend_addr) {
+        return Ok(None);
+    }
+
+    let Some(backend) = find_backend_binary(app) else {
+        return Err("Backend binary not found under resources: bin/backend/*".to_string());
+    };
+
+    let mut cmd = Command::new(&backend);
+    if let Some(parent) = backend.parent() {
+        // Helps backends that expect sibling folders/assets via relative paths.
+        cmd.current_dir(parent);
+    }
+
+    // In Windows release builds, ensure the backend runs truly in the background.
+    #[cfg(windows)]
+    if !cfg!(debug_assertions) {
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        cmd.stdin(Stdio::null());
+        cmd.stdout(Stdio::null());
+        cmd.stderr(Stdio::null());
+    }
+
+    let child = cmd
+        .spawn()
+        .map_err(|err| format!("Failed to start backend at {}: {err}", backend.display()))?;
+
+    Ok(Some(child.id()))
+}
+
+fn nodexl_db_path(create_dir: bool) -> Result<PathBuf, String> {
+    let local_appdata = std::env::var_os("LOCALAPPDATA")
+        .ok_or_else(|| "LOCALAPPDATA env var not set".to_string())?;
+
+    let mut dir = PathBuf::from(local_appdata);
+    dir.push("nodexlapp");
+
+    if create_dir {
+        fs::create_dir_all(&dir).map_err(|e| format!("Failed to create nodexlapp dir: {e}"))?;
+    }
+
+    dir.push("nodexl.db");
+    Ok(dir)
+}
+
+fn restart_backend_impl(app: &tauri::AppHandle) -> Result<(), String> {
+    kill_backend_if_spawned();
+
+    // Wait briefly for the OS to release the port.
+    let backend_port: u16 = 8000;
+    let backend_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), backend_port);
+    for _ in 0..20 {
+        if !is_listening(backend_addr) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    if is_listening(backend_addr) {
+        return Err(
+            "El backend sigue escuchando en 127.0.0.1:8000 (no pude reiniciarlo)".to_string(),
+        );
+    }
+
+    let pid = spawn_backend(app)?
+        .ok_or_else(|| "No se inició el backend (parece que ya estaba corriendo)".to_string())?;
+
+    if let Ok(mut guard) = backend_pid_cell().lock() {
+        *guard = Some(pid);
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn restart_backend(app: tauri::AppHandle) -> Result<(), String> {
+    restart_backend_impl(&app)
+}
+
+#[tauri::command]
+fn import_db(app: tauri::AppHandle, source_path: String) -> Result<(), String> {
+    let src = PathBuf::from(source_path);
+    if !src.exists() {
+        return Err("Archivo .db no existe".to_string());
+    }
+
+    let dest = nodexl_db_path(true)?;
+    fs::copy(&src, &dest).map_err(|e| format!("Error copiando DB a destino: {e}"))?;
+
+    restart_backend_impl(&app)
+}
+
+#[tauri::command]
+fn export_db(dest_path: String) -> Result<(), String> {
+    let src = nodexl_db_path(false)?;
+    if !src.exists() {
+        return Err("No existe nodexl.db para exportar".to_string());
+    }
+
+    let mut dest = PathBuf::from(dest_path);
+    let lower = dest.to_string_lossy().to_ascii_lowercase();
+    if !lower.ends_with(".db") {
+        dest.set_extension("db");
+    }
+
+    fs::copy(&src, &dest).map_err(|e| format!("Error exportando DB: {e}"))?;
+    Ok(())
+}
+
 fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .invoke_handler(tauri::generate_handler![
+            restart_backend,
+            import_db,
+            export_db
+        ])
         .setup(|app| {
-            // If the backend is already running (e.g. started manually), don't spawn a second instance.
-            // This avoids: "[Errno 10048] ... bind on address ('127.0.0.1', 8000)".
-            let backend_port: u16 = 8000;
-            let backend_addr =
-                SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), backend_port);
-            if is_listening(backend_addr) {
-                return Ok(());
-            }
-
-            let Some(backend) = find_backend_binary(app) else {
-                log_startup_issue(
-                    "Backend binary not found. Expected under resources: bin/backend/*",
-                );
-                return Ok(());
-            };
-
-            let mut cmd = Command::new(&backend);
-            if let Some(parent) = backend.parent() {
-                // Helps backends that expect sibling folders/assets via relative paths.
-                cmd.current_dir(parent);
-            }
-
-            // In Windows release builds, ensure the backend runs truly in the background
-            // (no visible console window).
-            #[cfg(windows)]
-            if !cfg!(debug_assertions) {
-                cmd.creation_flags(CREATE_NO_WINDOW);
-                cmd.stdin(Stdio::null());
-                cmd.stdout(Stdio::null());
-                cmd.stderr(Stdio::null());
-            }
-
-            let child = match cmd.spawn() {
-                Ok(child) => child,
-                Err(err) => {
-                    log_startup_issue(&format!(
-                        "Failed to start backend at {}: {err}",
-                        backend.display()
-                    ));
-                    return Ok(());
+            let handle = app.handle();
+            match spawn_backend(handle) {
+                Ok(Some(pid)) => {
+                    if let Ok(mut guard) = backend_pid_cell().lock() {
+                        *guard = Some(pid);
+                    }
                 }
-            };
-
-            if let Ok(mut guard) = backend_pid_cell().lock() {
-                *guard = Some(child.id());
+                Ok(None) => {}
+                Err(err) => {
+                    log_startup_issue(&err);
+                }
             }
 
             Ok(())
